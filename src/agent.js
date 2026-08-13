@@ -1,5 +1,5 @@
 import { loadGraph, graphToPromptBlock, mergeNodes } from "./graph.js";
-import { saveExchange } from "./archive.js";
+import { saveExchange, loadRecentExchanges } from "./archive.js";
 import { distillExchange } from "./distill.js";
 import { resolveRecalls } from "./recall.js";
 import { isSeen, markSeen, pairKey } from "./seen.js";
@@ -136,6 +136,8 @@ function cleanReply(reply) {
 
 // userSystemPrompt: optional extra instructions from the user's config
 export async function runAgent(userMessage, history, slot, llm, { onChunk, onStatus } = {}, userSystemPrompt = "") {
+  // If RAM history is empty (fresh start or restart), seed from disk so the agent isn't context-blind
+  if (history.length === 0) history = await loadRecentExchanges(slot, RECENT_MESSAGES);
   history = [...history, { role: "user", content: userMessage }];
   let cycles = 0;
 

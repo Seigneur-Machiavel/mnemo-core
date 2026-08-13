@@ -2,12 +2,13 @@ import express from "express";
 import { runAgent } from "./agent.js";
 import { loadRefs, saveRefs, addRef, removeRef } from "./refs.js";
 import { loadGraph, invalidateCache } from "./graph.js";
-import { listExchangeIds } from "./archive.js";
+import { listExchangeIds, loadRecentExchanges } from "./archive.js";
 import { analyzeImage } from "./files.js";
 import { slotPaths } from "./paths.js";
 import fs from "fs/promises";
 import path from "path";
 
+const HISTORY_DISPLAY_COUNT = 20; // pairs to show in UI history
 const histories = {};
 function getHistory(slot) {
   if (!histories[slot]) histories[slot] = [];
@@ -61,9 +62,13 @@ export function createServer(llm, config, onConfigChange) {
     res.json({ ok: true });
   });
 
-  // GET /chat/:slot/history — return current in-memory history for the front
-  app.get("/chat/:slot/history", (req, res) => {
-    res.json({ history: getHistory(req.params.slot) });
+  // GET /chat/:slot/history — rebuild from archive (persistent across restarts)
+  app.get("/chat/:slot/history", async (req, res) => {
+    const { slot } = req.params;
+    // Prefer RAM if populated (active session), fall back to disk
+    if (histories[slot]?.length) return res.json({ history: histories[slot] });
+    const history = await loadRecentExchanges(slot, HISTORY_DISPLAY_COUNT);
+    res.json({ history });
   });
 
   // GET /config

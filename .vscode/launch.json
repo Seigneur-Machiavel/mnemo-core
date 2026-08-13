@@ -1,0 +1,43 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Mnemo — Console + API",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/index.js",
+      "args": ["both"],
+      "runtimeArgs": ["--experimental-vm-modules"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Mnemo — API only",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/index.js",
+      "args": ["api"],
+      "runtimeArgs": ["--experimental-vm-modules"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Mnemo — Console only",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/index.js",
+      "args": ["console"],
+      "runtimeArgs": ["--experimental-vm-modules"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Mnemo — API + UI",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/index.js",
+      "args": ["api"],
+      "runtimeArgs": ["--experimental-vm-modules"],
+      "console": "integratedTerminal",
+      "postDebugTask": "start-ui",
+      "preLaunchTask": "start-ui"
+    }
+  ]
+}

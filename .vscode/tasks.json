@@ -1,0 +1,16 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "start-ui",
+      "type": "shell",
+      "command": "node ../mnemo-ui/server.js",
+      "isBackground": true,
+      "presentation": {
+        "group": "mnemo",
+        "panel": "dedicated"
+      },
+      "problemMatcher": []
+    }
+  ]
+}
