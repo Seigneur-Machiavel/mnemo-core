@@ -1,0 +1,9 @@
+{
+  "provider":    "openai-compat",
+  "baseUrl":     "http://localhost:1234/v1",
+  "model":       "google/gemma-4-e4b",
+  "apiKey":      null,
+  "maxContext":  131072,
+  "port":        3333,
+  "defaultSlot": "default"
+}
