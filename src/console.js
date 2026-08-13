@@ -1,11 +1,11 @@
 import readline from "readline";
 import { runAgent } from "./agent.js";
+import { getHistory } from "./api.js";
 
 export async function startConsole(llm, config) {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  const prompt = () => rl.question("\nYou > ", handleInput);
+  const rl  = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const ask = () => rl.question("\nYou > ", handleInput);
 
-  let history = [];
   let slot = config.defaultSlot;
 
   console.log(`\n🧠 Mnemo — slot: ${slot} | model: ${config.model}`);
@@ -13,22 +13,20 @@ export async function startConsole(llm, config) {
 
   async function handleInput(input) {
     input = input.trim();
-    if (!input) return prompt();
+    if (!input) return ask();
 
-    // Built-in commands
-    if (input === "/exit") { rl.close(); return; }
+    if (input === "/exit") return rl.close();
 
     if (input.startsWith("/slot ")) {
       slot = input.slice(6).trim();
-      history = [];
       console.log(`Switched to slot: ${slot}`);
-      return prompt();
+      return ask();
     }
 
     if (input === "/clear") {
-      history = [];
+      getHistory(slot).length = 0; // mutate in place — API sees the same reset
       console.log("History cleared.");
-      return prompt();
+      return ask();
     }
 
     if (input === "/refs") {
@@ -36,23 +34,26 @@ export async function startConsole(llm, config) {
       const refs = await loadRefs(slot);
       console.log("Active refs:", refs.activePaths.length ? refs.activePaths.join("\n  ") : "(none)");
       console.log("Project path:", refs.projectPath ?? "(none)");
-      return prompt();
+      return ask();
     }
 
     process.stdout.write("\nAgent > ");
 
     try {
-      history = await runAgent(input, history, slot, llm, {
+      const updated = await runAgent(input, getHistory(slot), slot, llm, {
         onChunk:  text => process.stdout.write(text),
         onStatus: text => console.log(`\n  [${text}]`),
       });
+      // Write back to shared store
+      getHistory(slot).length = 0;
+      getHistory(slot).push(...updated);
     } catch (err) {
       console.error("\n[error]", err.message);
     }
 
     process.stdout.write("\n");
-    prompt();
+    ask();
   }
 
-  prompt();
+  ask();
 }
