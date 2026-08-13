@@ -15,6 +15,17 @@ export async function applyEdit(patch) {
   await fs.mkdir(path.dirname(patch.path), { recursive: true });
 
   if (!patch.search) {
+    // Safety: refuse to overwrite an existing file in CREATE mode
+    try {
+      await fs.access(patch.path);
+      throw new Error(
+        `CREATE mode (empty SEARCH) refused — "${patch.path}" already exists. ` +
+        `Use a non-empty SEARCH string to edit an existing file.`
+      );
+    } catch (err) {
+      if (err.code !== "ENOENT") throw err;
+      // ENOENT = file doesn't exist, safe to create
+    }
     await fs.writeFile(patch.path, patch.replace, "utf-8");
     console.log(`[mnemo/edit] Created: ${patch.path}`);
     return;
