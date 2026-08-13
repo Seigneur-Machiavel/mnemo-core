@@ -1,12 +1,7 @@
 import fs from "fs/promises";
+import path from "path";
 import { slotPaths } from "./paths.js";
-
-// refs.json shape:
-// {
-//   projectPath: "/absolute/path/to/project",  // optional root dir
-//   activePaths: ["/abs/path/file.js", ...],   // files currently in context
-//   meta: {}                                    // free-form slot metadata
-// }
+import { buildProjectTree } from "./files.js";
 
 const EMPTY = () => ({ projectPath: null, activePaths: [], meta: {} });
 
@@ -37,19 +32,31 @@ export async function removeRef(absPath, slot) {
   await saveRefs(refs, slot);
 }
 
-// Returns file contents for all active refs, silently skips missing files
 export async function buildRefsBlock(slot) {
   const refs = await loadRefs(slot);
-  if (refs.activePaths.length === 0) return "";
+  const sections = [];
 
-  const lines = ["[ACTIVE REFERENCES]"];
-  for (const absPath of refs.activePaths) {
-    try {
-      const content = await fs.readFile(absPath, "utf-8");
-      lines.push(`\n--- ${absPath} ---\n${content}\n--- end ---`);
-    } catch {
-      lines.push(`\n--- ${absPath} --- [FILE NOT FOUND]`);
-    }
+  // Inject project root + directory tree so the model knows what files exist
+  if (refs.projectPath) {
+    const tree = await buildProjectTree(refs.projectPath);
+    sections.push(
+      `[PROJECT ROOT]\n${refs.projectPath}\n\n` +
+      `[PROJECT TREE]\n${path.basename(refs.projectPath)}/\n${tree}`
+    );
   }
-  return lines.join("\n");
+
+  if (refs.activePaths.length > 0) {
+    const lines = ["[ACTIVE REFERENCES]"];
+    for (const absPath of refs.activePaths) {
+      try {
+        const content = await fs.readFile(absPath, "utf-8");
+        lines.push(`\n--- ${absPath} ---\n${content}\n--- end ---`);
+      } catch {
+        lines.push(`\n--- ${absPath} --- [FILE NOT FOUND]`);
+      }
+    }
+    sections.push(lines.join("\n"));
+  }
+
+  return sections.join("\n\n---\n\n");
 }

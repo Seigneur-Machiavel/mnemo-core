@@ -7,6 +7,7 @@ import { analyzeImage } from "./files.js";
 import { slotPaths } from "./paths.js";
 import fs from "fs/promises";
 import path from "path";
+import { error } from "console";
 
 // Shared in-process history per slot — console and API use the same store.
 // Key: slot name, Value: [{ role, content }]
@@ -49,6 +50,7 @@ export function createServer(llm, config, onConfigChange) {
       });
       send("done", {});
     } catch (err) {
+		console.error(err.stack);
       send("error", { text: err.message });
     }
 

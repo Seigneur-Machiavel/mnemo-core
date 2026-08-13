@@ -48,7 +48,7 @@ export async function startConsole(llm, config) {
       getHistory(slot).length = 0;
       getHistory(slot).push(...updated);
     } catch (err) {
-      console.error("\n[error]", err.message);
+      console.error("\n[error]", err.stack);
     }
 
     process.stdout.write("\n");

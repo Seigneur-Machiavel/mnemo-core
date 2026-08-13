@@ -6,14 +6,11 @@ export function isImagePath(filePath) {
     .has(path.extname(filePath).toLowerCase());
 }
 
-// Read a file by absolute path
 export async function readFileContent(absPath) {
   try { return await fs.readFile(absPath, "utf-8"); }
   catch { return null; }
 }
 
-// Apply a search/replace patch to a file.
-// Empty search = CREATE mode (writes replace as full content, creates dirs as needed).
 export async function applyEdit(patch) {
   await fs.mkdir(path.dirname(patch.path), { recursive: true });
 
@@ -30,8 +27,48 @@ export async function applyEdit(patch) {
   console.log(`[mnemo/edit] Patched: ${patch.path}`);
 }
 
-// Analyse an image (base64) and return a label + text description.
-// Does NOT store the file — caller decides what to do with the result.
+const IGNORE = new Set([
+  "node_modules", ".git", ".svn", "dist", "build", ".next", ".nuxt",
+  "__pycache__", ".venv", "venv", ".DS_Store", "coverage", ".turbo",
+]);
+
+const MAX_DEPTH   = 4;
+const MAX_ENTRIES = 300;
+
+export async function buildProjectTree(rootPath, depth = 0, counter = { n: 0 }) {
+  if (depth > MAX_DEPTH || counter.n >= MAX_ENTRIES) return "";
+
+  let entries;
+  try {
+    entries = await fs.readdir(rootPath, { withFileTypes: true });
+  } catch {
+    return "";
+  }
+
+  const filtered = entries
+    .filter(e => !IGNORE.has(e.name) && !e.name.startsWith("."))
+    .sort((a, b) => {
+      if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+  const lines = [];
+  for (let i = 0; i < filtered.length; i++) {
+    if (counter.n >= MAX_ENTRIES) { lines.push("  … (truncated)"); break; }
+    counter.n++;
+    const entry  = filtered[i];
+    const isLast = i === filtered.length - 1;
+    const prefix = "  ".repeat(depth) + (isLast ? "└── " : "├── ");
+    lines.push(prefix + entry.name + (entry.isDirectory() ? "/" : ""));
+    if (entry.isDirectory()) {
+      const sub = await buildProjectTree(path.join(rootPath, entry.name), depth + 1, counter);
+      if (sub) lines.push(sub);
+    }
+  }
+
+  return lines.join("\n");
+}
+
 export async function analyzeImage(base64, mediaType, originalName, llm) {
   const prompt = [
     `You are analyzing an image to produce two things:`,
@@ -42,7 +79,6 @@ export async function analyzeImage(base64, mediaType, originalName, llm) {
     `{"label":"descriptive_label","analysis":"full content or description"}`,
   ].join("\n");
 
-  const ext  = path.extname(originalName).toLowerCase();
   const raw  = await llm.vision(base64, mediaType, prompt);
   const json = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim().match(/\{[\s\S]*\}/);
   if (!json) throw new Error(`No JSON in vision response`);

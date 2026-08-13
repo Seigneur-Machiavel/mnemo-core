@@ -42,7 +42,7 @@ export function graphToPromptBlock(graph) {
   const lines = ["[MEMORY GRAPH]"];
   for (const [key, node] of Object.entries(graph.nodes)) {
     lines.push(`${key}: ${node.conclusion}`);
-    if (node.relations.length > 0) lines.push(`  links: ${node.relations.join(", ")}`);
+    if (node.relations && node.relations.length > 0) lines.push(`  links: ${node.relations.join(", ")}`);
     if (graph.anchors[key]) lines.push(`  anchor: ${graph.anchors[key]}`);
   }
   return lines.join("\n");
