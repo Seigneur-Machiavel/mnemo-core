@@ -7,10 +7,7 @@ import { analyzeImage } from "./files.js";
 import { slotPaths } from "./paths.js";
 import fs from "fs/promises";
 import path from "path";
-import { error } from "console";
 
-// Shared in-process history per slot — console and API use the same store.
-// Key: slot name, Value: [{ role, content }]
 const histories = {};
 function getHistory(slot) {
   if (!histories[slot]) histories[slot] = [];
@@ -29,9 +26,7 @@ export function createServer(llm, config, onConfigChange) {
     next();
   });
 
-  // --- Chat (SSE streaming) ---
-  // POST /chat  body: { message, slot? }
-  // history is server-side per slot — no need to send it from the front
+  // POST /chat
   app.post("/chat", async (req, res) => {
     const { message, slot = config.defaultSlot } = req.body;
     if (!message) return res.status(400).json({ error: "message required" });
@@ -44,34 +39,39 @@ export function createServer(llm, config, onConfigChange) {
       res.write(`data: ${JSON.stringify({ type, ...payload })}\n\n`);
 
     try {
-      histories[slot] = await runAgent(message, getHistory(slot), slot, llm, {
-        onChunk:  text => send("chunk",  { text }),
-        onStatus: text => send("status", { text }),
-      });
+      histories[slot] = await runAgent(
+        message,
+        getHistory(slot),
+        slot,
+        llm,
+        { onChunk: text => send("chunk", { text }), onStatus: text => send("status", { text }) },
+        config.systemPrompt ?? "",
+      );
       send("done", {});
     } catch (err) {
-		console.error(err.stack);
       send("error", { text: err.message });
     }
 
     res.end();
   });
 
-  // DELETE /chat/:slot — clear in-memory history for a slot
+  // DELETE /chat/:slot — clear history
   app.delete("/chat/:slot", (req, res) => {
     histories[req.params.slot] = [];
     res.json({ ok: true });
   });
 
-  // --- Config ---
+  // GET /chat/:slot/history — return current in-memory history for the front
+  app.get("/chat/:slot/history", (req, res) => {
+    res.json({ history: getHistory(req.params.slot) });
+  });
+
   // GET /config
   app.get("/config", (req, res) => res.json(config));
 
-  // PATCH /config  body: Partial<config>
-  // Hot-updates running config. Provider/model changes take effect on next request.
-  // onConfigChange(newConfig) is called so index.js can rebuild the llm instance.
+  // PATCH /config
   app.patch("/config", async (req, res) => {
-    const allowed = ["model", "baseUrl", "provider", "apiKey", "maxContext", "defaultSlot"];
+    const allowed = ["model", "baseUrl", "provider", "apiKey", "maxContext", "defaultSlot", "systemPrompt"];
     for (const key of allowed) {
       if (req.body[key] !== undefined) config[key] = req.body[key];
     }
@@ -79,7 +79,6 @@ export function createServer(llm, config, onConfigChange) {
     res.json({ ok: true, config });
   });
 
-  // --- Slots ---
   // GET /slots
   app.get("/slots", async (req, res) => {
     const entries = await fs.readdir(path.resolve("conversations"), { withFileTypes: true }).catch(() => []);
@@ -87,14 +86,13 @@ export function createServer(llm, config, onConfigChange) {
     res.json({ slots });
   });
 
-  // POST /slots  body: { slot, projectPath? }
+  // POST /slots
   app.post("/slots", async (req, res) => {
     const { slot, projectPath = null } = req.body;
     if (!slot) return res.status(400).json({ error: "slot required" });
     const paths = slotPaths(slot);
     await fs.mkdir(paths.base, { recursive: true });
     if (projectPath) {
-      const { loadRefs, saveRefs } = await import("./refs.js");
       const refs = await loadRefs(slot);
       refs.projectPath = projectPath;
       await saveRefs(refs, slot);
@@ -113,7 +111,7 @@ export function createServer(llm, config, onConfigChange) {
     res.json({ slot, graph, refs, exchangeCount: exchanges.length });
   });
 
-  // --- Refs ---
+  // Refs
   app.get("/slots/:slot/refs", async (req, res) =>
     res.json(await loadRefs(req.params.slot)));
 
@@ -139,21 +137,14 @@ export function createServer(llm, config, onConfigChange) {
     res.json({ ok: true });
   });
 
-  // --- Image upload ---
-  // POST /slots/:slot/image
-  // Body: { name: "filename.png", data: "<base64>", mediaType: "image/png" }
-  // Analyses the image via vision, injects result into next chat turn as context.
-  // Does NOT store the image file.
+  // Image upload
   app.post("/slots/:slot/image", async (req, res) => {
     const { name, data, mediaType } = req.body;
     if (!name || !data || !mediaType)
       return res.status(400).json({ error: "name, data and mediaType required" });
-
     try {
       const { label, analysis } = await analyzeImage(data, mediaType, name, llm);
-      // Inject as a system-side user message so the agent sees it on next turn
-      const slot = req.params.slot;
-      getHistory(slot).push({
+      getHistory(req.params.slot).push({
         role: "user",
         content: `[Image uploaded: ${name} (${label})]\n${analysis}`,
       });
@@ -163,8 +154,7 @@ export function createServer(llm, config, onConfigChange) {
     }
   });
 
-  // --- File browser ---
-  // GET /slots/:slot/browse?sub=relative/path
+  // File browser
   app.get("/slots/:slot/browse", async (req, res) => {
     const refs = await loadRefs(req.params.slot);
     if (!refs.projectPath) return res.status(400).json({ error: "No projectPath set" });
@@ -183,5 +173,4 @@ export function createServer(llm, config, onConfigChange) {
   return app;
 }
 
-// Exported so console.js can share the same history store
 export { getHistory };
