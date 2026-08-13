@@ -1,3 +1,4 @@
 node_modules/
 conversations/
 config.json
+package-lock.json
